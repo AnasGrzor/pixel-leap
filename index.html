@@ -23,16 +23,23 @@
         #ui {
             position: absolute;
             top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
+            right: 10px; /* Score remains on the right */
             font-family: Arial, sans-serif;
             padding: 10px;
             border-radius: 5px;
         }
+        #title {
+            position: absolute;
+            top: 10px;
+            left: 10px; /* Title positioned on the left */
+            color: green; /* Ensure title is visible */
+            font-family: Arial, sans-serif;
+            user-select: none;
+        }
         #startScreen {
             position: absolute;
-            top: 0;
-            left: 0;
+            top: 0; /* Reverted to original */
+            left: 0; /* Reverted to original */
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.7);
@@ -50,25 +57,28 @@
         }
         #gameCanvas {
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            user-select: none;
         }
         #score {
             color: #ffcc00;
+            user-select: none;
             pointer-events: none;
         }
         #highScore {
             color: #333;
             font-weight: bold;
+            user-select: none;
             pointer-events: none;
         }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    
     <div id="ui">
         <p>Score: <span id="score">0</span> | High Score: <span id="highScore">0</span></p>
     </div>
     <div id="startScreen">
-        <h1>Pixel Leap</h1>
         <button id="startButton">Start Game</button>
     </div>
     <script src="game.js"></script>
