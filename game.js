@@ -289,7 +289,7 @@ function drawBackground() {
 // Define frame dimensions
 const PLAYER_FRAME_WIDTH = 30; // Width of each frame
 const PLAYER_FRAME_HEIGHT = 30; // Height of each frame
-const PLAYER_FRAMES = 3; // Total number of frames in the spritesheet
+const PLAYER_FRAMES = 1; // Total number of frames in the spritesheet
 let currentPlayerFrame = 0; // Current frame to display
 
 // Update the drawPlayer function to use the spritesheet
@@ -545,7 +545,7 @@ function preloadAssets(callback) {
     const totalAssets = 2; // Number of assets to load
 
     playerSprite.onload = () => {
-        console.log('Player sprite loaded successfully');
+        console.log(`Player sprite loaded successfully: ${playerSprite.src}`);
         assetsLoaded++;
         if (assetsLoaded === totalAssets) callback();
     };
@@ -557,7 +557,6 @@ function preloadAssets(callback) {
         };
     });
 
-    playerSprite.src = 'assets/images/rogue.png'; // Ensure this path is correct
     obstacleSprites.forEach(sprite => {
         sprite.src = sprite.src; // Ensure these paths are correct
     });
