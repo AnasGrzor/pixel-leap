@@ -1,0 +1,424 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreElement = document.getElementById('score');
+const highScoreElement = document.getElementById('highScore');
+const startScreen = document.getElementById('startScreen');
+const startButton = document.getElementById('startButton');
+
+// Move these constants to the top
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 400;
+const MOBILE_BREAKPOINT = 768; // px
+const TOUCH_BUTTON_SIZE = 50; // px
+
+// Initialize isMobile
+let isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+
+// Now define these constants using isMobile
+const PLATFORM_MIN_WIDTH = isMobile ? 80 : 60;
+const PLATFORM_MAX_WIDTH = isMobile ? 180 : 150;
+const PLATFORM_MIN_HEIGHT = 10;
+const PLATFORM_MAX_HEIGHT = 30;
+const PLATFORM_MIN_GAP = isMobile ? 40 : 30;
+const PLATFORM_MAX_GAP = isMobile ? 140 : 120;
+
+const SKY_WIDTH = GAME_WIDTH * 2;
+
+let gameRunning = false;
+let scale = 1;
+let score = 0;
+let highScore = 0;
+
+const GRAVITY = 0.5;
+const JUMP_FORCE = 12;
+const JUMP_DURATION = 30; // frames
+const MAX_JUMPS = 2;
+const DOUBLE_JUMP_FORCE = 10; // Slightly weaker than the initial jump
+
+// Update the player object
+const player = {
+    x: 50,
+    y: 200,
+    width: isMobile ? 40 : 30,
+    height: isMobile ? 40 : 30,
+    speed: 5,
+    velocityX: 0,
+    velocityY: 0,
+    isJumping: false,
+    jumpCount: 0,
+    color: '#FF5733'
+};
+
+let platforms = [];
+let coins = [];
+let cameraX = 0;
+
+const CAMERA_BUFFER = GAME_WIDTH / 3;
+
+let worldOffset = 0;
+const WORLD_SHIFT_THRESHOLD = 10000;
+
+let playerScreenX = GAME_WIDTH / 3;
+
+let touchLeftButton, touchRightButton, touchJumpButton;
+
+function generatePlatform(startX) {
+    const width = PLATFORM_MIN_WIDTH + Math.random() * (PLATFORM_MAX_WIDTH - PLATFORM_MIN_WIDTH);
+    const height = PLATFORM_MIN_HEIGHT + Math.random() * (PLATFORM_MAX_HEIGHT - PLATFORM_MIN_HEIGHT);
+    const y = GAME_HEIGHT - height - Math.random() * (GAME_HEIGHT / 2);
+    return { x: startX, y, width, height };
+}
+
+function generateCoin(platform) {
+    const x = platform.x + Math.random() * (platform.width - 20);
+    const y = platform.y - 30 - Math.random() * 50;
+    return { x, y, width: 20, height: 20, collected: false };
+}
+
+function initializeLevel() {
+    platforms = [];
+    coins = [];
+    let platformX = 0;
+
+    platforms.push({ x: 0, y: GAME_HEIGHT - 50, width: 200, height: 20 });
+
+    while (platformX < GAME_WIDTH * 2) {
+        const platform = generatePlatform(platformX);
+        platforms.push(platform);
+
+        if (Math.random() < 0.5) {
+            coins.push(generateCoin(platform));
+        }
+
+        platformX += platform.width + PLATFORM_MIN_GAP + Math.random() * (PLATFORM_MAX_GAP - PLATFORM_MIN_GAP);
+    }
+
+    player.x = 50;
+    player.y = platforms[0].y - player.height;
+}
+
+function updateLevel() {
+    platforms = platforms.filter(p => p.x + p.width > cameraX - 100);
+    coins = coins.filter(c => c.x > cameraX - 100);
+
+    while (platforms[platforms.length - 1].x + platforms[platforms.length - 1].width < cameraX + GAME_WIDTH * 1.5) {
+        const lastPlatform = platforms[platforms.length - 1];
+        const newPlatform = generatePlatform(lastPlatform.x + lastPlatform.width + PLATFORM_MIN_GAP + Math.random() * (PLATFORM_MAX_GAP - PLATFORM_MIN_GAP));
+        platforms.push(newPlatform);
+
+        if (Math.random() < 0.5) {
+            coins.push(generateCoin(newPlatform));
+        }
+    }
+}
+
+function updatePlayer() {
+    if (player.isJumping) {
+        jumpTimer++;
+        if (jumpTimer <= JUMP_DURATION) {
+            const t = jumpTimer / JUMP_DURATION;
+            const easeT = easeOutQuad(t);
+            player.velocityY = -(player.jumpCount === 1 ? JUMP_FORCE : DOUBLE_JUMP_FORCE) * (1 - easeT);
+        } else {
+            player.isJumping = false;
+            jumpTimer = 0;
+        }
+    }
+
+    player.velocityY += GRAVITY;
+    player.velocityX += (targetVelocityX - player.velocityX) * 0.1;
+
+    const maxHorizontalSpeed = 5;
+    player.velocityX = Math.max(Math.min(player.velocityX, maxHorizontalSpeed), -maxHorizontalSpeed);
+
+    player.x += player.velocityX;
+    player.y += player.velocityY;
+
+    // Prevent player from going above the screen
+    if (player.y < 0) {
+        player.y = 0;
+        player.velocityY = 0;
+    }
+
+    cameraX = player.x - playerScreenX;
+
+    player.velocityX *= 0.9;
+
+    let onPlatform = false;
+    platforms.forEach(platform => {
+        if (
+            player.x < platform.x + platform.width &&
+            player.x + player.width > platform.x &&
+            player.y + player.height > platform.y &&
+            player.y + player.height < platform.y + player.velocityY + 5
+        ) {
+            player.y = platform.y - player.height;
+            player.velocityY = 0;
+            player.isJumping = false;
+            player.jumpCount = 0;
+            jumpTimer = 0;
+            onPlatform = true;
+        }
+    });
+
+    // Check if player is on the ground
+    if (player.y + player.height >= GAME_HEIGHT) {
+        player.y = GAME_HEIGHT - player.height;
+        player.velocityY = 0;
+        player.isJumping = false;
+        player.jumpCount = 0;
+        jumpTimer = 0;
+        onPlatform = true;
+    }
+
+    if (!onPlatform && !player.isJumping && player.velocityY >= 0) {
+        player.isJumping = true;
+        jumpTimer = JUMP_DURATION; // Start falling immediately
+    }
+
+    coins = coins.filter(coin => {
+        if (
+            !coin.collected &&
+            player.x < coin.x + coin.width &&
+            player.x + player.width > coin.x &&
+            player.y < coin.y + coin.height &&
+            player.y + player.height > coin.y
+        ) {
+            updateScore();
+            return false;
+        }
+        return true;
+    });
+
+    if (player.y + player.height > GAME_HEIGHT) {
+        player.y = GAME_HEIGHT - player.height;
+        player.velocityY = 0;
+        player.isJumping = false;
+    }
+
+    if (cameraX < 0) {
+        cameraX = 0;
+        player.x = playerScreenX;
+    }
+}
+
+function updateScore() {
+    score += 10;
+    scoreElement.textContent = score.toString();
+    if (score > highScore) {
+        highScore = score;
+        highScoreElement.textContent = highScore.toString();
+        localStorage.setItem('highScore', highScore.toString());
+    }
+}
+
+function drawBackground() {
+    const skyOffset = cameraX * 0.5; // Slower parallax effect
+    
+    ctx.fillStyle = '#87CEEB'; // Sky blue color
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    
+    // Add some clouds for effect
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    for (let i = 0; i < 10; i++) {
+        const cloudX = ((i * 200 - skyOffset) % SKY_WIDTH + SKY_WIDTH) % SKY_WIDTH;
+        ctx.beginPath();
+        ctx.arc(cloudX, 50, 30, 0, Math.PI * 2);
+        ctx.arc(cloudX + 25, 50, 25, 0, Math.PI * 2);
+        ctx.arc(cloudX + 50, 50, 30, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawPlayer() {
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x - cameraX, player.y, player.width, player.height);
+    
+    ctx.fillStyle = 'white';
+    ctx.fillRect(player.x - cameraX + 5, player.y + 5, 8, 8);
+    ctx.fillRect(player.x - cameraX + player.width - 13, player.y + 5, 8, 8);
+    
+    ctx.fillStyle = 'black';
+    ctx.fillRect(player.x - cameraX + 7, player.y + 7, 4, 4);
+    ctx.fillRect(player.x - cameraX + player.width - 11, player.y + 7, 4, 4);
+}
+
+function drawPlatforms() {
+    ctx.fillStyle = '#4CAF50';
+    platforms.forEach(platform => {
+        const screenX = platform.x - cameraX;
+        ctx.fillRect(screenX, platform.y, platform.width, platform.height);
+        
+        ctx.fillStyle = '#45a049';
+        ctx.fillRect(screenX, platform.y, platform.width, 5);
+    });
+}
+
+function drawCoins() {
+    ctx.fillStyle = '#FFD700';
+    coins.forEach(coin => {
+        if (!coin.collected) {
+            const screenX = coin.x - cameraX;
+            ctx.beginPath();
+            ctx.arc(screenX + coin.width / 2, coin.y + coin.height / 2, coin.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#FFA500';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    });
+}
+
+function gameLoop() {
+    if (!gameRunning) return;
+
+    ctx.save();
+    ctx.scale(1 / scale, 1 / scale);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    updatePlayer();
+    updateLevel();
+    
+    drawBackground();
+    drawPlatforms();
+    drawCoins();
+    drawPlayer();
+
+    requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    gameRunning = true;
+    score = 0;
+    scoreElement.textContent = '0';
+    loadHighScore(); // Load the high score when starting the game
+    startScreen.style.display = 'none';
+    resizeCanvas();
+    initializeLevel();
+    if (isMobile) {
+        createTouchControls();
+    }
+    gameLoop();
+}
+
+let targetVelocityX = 0;
+
+document.addEventListener('keydown', (e) => {
+    if (!gameRunning) return;
+    if (e.key === 'ArrowLeft') targetVelocityX = -player.speed / scale;
+    if (e.key === 'ArrowRight') targetVelocityX = player.speed / scale;
+    if (e.key === 'ArrowUp' && player.jumpCount < MAX_JUMPS) {
+        player.isJumping = true;
+        player.jumpCount++;
+        jumpTimer = 0;
+    }
+});
+
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        targetVelocityX = 0;
+    }
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+startButton.addEventListener('click', startGame);
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+    scale = Math.min(
+        window.innerWidth / GAME_WIDTH,
+        window.innerHeight / GAME_HEIGHT
+    );
+    ctx.scale(scale, scale);
+    
+    // Update player size based on new isMobile value
+    player.width = isMobile ? 40 : 30;
+    player.height = isMobile ? 40 : 30;
+    
+    if (isMobile) {
+        createTouchControls();
+    } else {
+        removeTouchControls();
+    }
+}
+
+function createTouchControls() {
+    touchLeftButton = document.createElement('div');
+    touchRightButton = document.createElement('div');
+    touchJumpButton = document.createElement('div');
+
+    const buttonStyle = `
+        position: absolute;
+        width: ${TOUCH_BUTTON_SIZE}px;
+        height: ${TOUCH_BUTTON_SIZE}px;
+        background-color: rgba(255, 255, 255, 0.5);
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 24px;
+        user-select: none;
+    `;
+
+    touchLeftButton.style.cssText = buttonStyle + 'left: 20px; bottom: 20px;';
+    touchRightButton.style.cssText = buttonStyle + 'left: 80px; bottom: 20px;';
+    touchJumpButton.style.cssText = buttonStyle + 'right: 20px; bottom: 20px;';
+
+    touchLeftButton.innerHTML = '←';
+    touchRightButton.innerHTML = '→';
+    touchJumpButton.innerHTML = '↑';
+
+    document.body.appendChild(touchLeftButton);
+    document.body.appendChild(touchRightButton);
+    document.body.appendChild(touchJumpButton);
+
+    addTouchListeners();
+}
+
+function removeTouchControls() {
+    if (touchLeftButton) touchLeftButton.remove();
+    if (touchRightButton) touchRightButton.remove();
+    if (touchJumpButton) touchJumpButton.remove();
+}
+
+function addTouchListeners() {
+    touchLeftButton.addEventListener('touchstart', () => { targetVelocityX = -player.speed / scale; });
+    touchLeftButton.addEventListener('touchend', () => { targetVelocityX = 0; });
+
+    touchRightButton.addEventListener('touchstart', () => { targetVelocityX = player.speed / scale; });
+    touchRightButton.addEventListener('touchend', () => { targetVelocityX = 0; });
+
+    touchJumpButton.addEventListener('touchstart', () => {
+        if (player.jumpCount < MAX_JUMPS) {
+            player.isJumping = true;
+            player.jumpCount++;
+            jumpTimer = 0;
+        }
+    });
+}
+
+window.addEventListener('load', () => {
+    resizeCanvas();
+    loadHighScore();
+    drawBackground();
+    initializeLevel();
+    drawPlatforms();
+    drawCoins();
+    drawPlayer();
+});
+
+function easeOutQuad(t) {
+    return 1 - (1 - t) * (1 - t);
+}
+
+function loadHighScore() {
+    const savedHighScore = localStorage.getItem('highScore');
+    if (savedHighScore !== null) {
+        highScore = parseInt(savedHighScore, 10);
+        highScoreElement.textContent = highScore.toString();
+    }
+}
