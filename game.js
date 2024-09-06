@@ -51,6 +51,7 @@ const player = {
 
 let platforms = [];
 let coins = [];
+let obstacles = []; // Step 1: Define an array for obstacles
 let cameraX = 0;
 
 const CAMERA_BUFFER = GAME_WIDTH / 3;
@@ -61,6 +62,26 @@ const WORLD_SHIFT_THRESHOLD = 10000;
 let playerScreenX = GAME_WIDTH / 3;
 
 let touchLeftButton, touchRightButton, touchJumpButton;
+
+// Step 1: Load sprite images
+const playerSprite = new Image();
+playerSprite.src = 'assets/images/rogue.png'; // Replace with the actual path to your player sprite
+
+// Step 1: Load multiple obstacle sprite images
+const obstacleSprites = [
+    new Image(),
+    new Image(),
+    new Image(),
+    new Image()
+];
+
+obstacleSprites[0].src = 'assets/images/spike.png'; // Path for spike
+obstacleSprites[1].src = 'assets/images/spike2.png'; // Path for spike2
+obstacleSprites[2].src = 'assets/images/spike3.png'; // Path for spike3
+obstacleSprites[3].src = 'assets/images/spike4.png'; // Path for spike4
+
+const backgroundMusic = new Audio('assets/audio/music.mp3'); // Replace with the actual path to your music file 
+backgroundMusic.volume = 0.2; // Set volume to 20% (adjust as needed)
 
 function generatePlatform(startX) {
     const width = PLATFORM_MIN_WIDTH + Math.random() * (PLATFORM_MAX_WIDTH - PLATFORM_MIN_WIDTH);
@@ -75,9 +96,20 @@ function generateCoin(platform) {
     return { x, y, width: 20, height: 20, collected: false };
 }
 
+// Step 2: Update the generateObstacle function to use a random sprite
+function generateObstacle(startX) {
+    const width = 40; // Fixed width for obstacles
+    const height = 40; // Fixed height for obstacles
+    const y = GAME_HEIGHT - height; // Position at the bottom
+    const spriteIndex = Math.floor(Math.random() * obstacleSprites.length); // Randomly select an index
+    return { x: startX, y, width, height, sprite: obstacleSprites[spriteIndex] }; // Include the selected sprite
+}
+
+// Step 3: Update the initializeLevel function to include obstacles
 function initializeLevel() {
     platforms = [];
     coins = [];
+    obstacles = []; // Reset obstacles
     let platformX = 0;
 
     platforms.push({ x: 0, y: GAME_HEIGHT - 50, width: 200, height: 20 });
@@ -90,6 +122,11 @@ function initializeLevel() {
             coins.push(generateCoin(platform));
         }
 
+        // Generate obstacles randomly
+        if (Math.random() < 0.2) { // 20% chance to create an obstacle
+            obstacles.push(generateObstacle(platformX + platform.width));
+        }
+
         platformX += platform.width + PLATFORM_MIN_GAP + Math.random() * (PLATFORM_MAX_GAP - PLATFORM_MIN_GAP);
     }
 
@@ -100,6 +137,7 @@ function initializeLevel() {
 function updateLevel() {
     platforms = platforms.filter(p => p.x + p.width > cameraX - 100);
     coins = coins.filter(c => c.x > cameraX - 100);
+    obstacles = obstacles.filter(o => o.x > cameraX - 100); // Filter out obstacles that are off-screen
 
     while (platforms[platforms.length - 1].x + platforms[platforms.length - 1].width < cameraX + GAME_WIDTH * 1.5) {
         const lastPlatform = platforms[platforms.length - 1];
@@ -109,9 +147,15 @@ function updateLevel() {
         if (Math.random() < 0.5) {
             coins.push(generateCoin(newPlatform));
         }
+
+        // Generate obstacles randomly
+        if (Math.random() < 0.2) { // 20% chance to create an obstacle
+            obstacles.push(generateObstacle(newPlatform.x + newPlatform.width));
+        }
     }
 }
 
+// Step 4: Update the updatePlayer function to check for collisions with obstacles
 function updatePlayer() {
     if (player.isJumping) {
         jumpTimer++;
@@ -190,6 +234,18 @@ function updatePlayer() {
         return true;
     });
 
+    // Check for collisions with obstacles
+    obstacles.forEach(obstacle => {
+        if (
+            player.x < obstacle.x + obstacle.width &&
+            player.x + player.width > obstacle.x &&
+            player.y < obstacle.y + obstacle.height &&
+            player.y + player.height > obstacle.y
+        ) {
+            gameOver(); // Call game over function on collision
+        }
+    });
+
     if (player.y + player.height > GAME_HEIGHT) {
         player.y = GAME_HEIGHT - player.height;
         player.velocityY = 0;
@@ -230,17 +286,28 @@ function drawBackground() {
     }
 }
 
+// Define frame dimensions
+const PLAYER_FRAME_WIDTH = 30; // Width of each frame
+const PLAYER_FRAME_HEIGHT = 30; // Height of each frame
+const PLAYER_FRAMES = 3; // Total number of frames in the spritesheet
+let currentPlayerFrame = 0; // Current frame to display
+
+// Update the drawPlayer function to use the spritesheet
 function drawPlayer() {
-    ctx.fillStyle = player.color;
-    ctx.fillRect(player.x - cameraX, player.y, player.width, player.height);
-    
-    ctx.fillStyle = 'white';
-    ctx.fillRect(player.x - cameraX + 5, player.y + 5, 8, 8);
-    ctx.fillRect(player.x - cameraX + player.width - 13, player.y + 5, 8, 8);
-    
-    ctx.fillStyle = 'black';
-    ctx.fillRect(player.x - cameraX + 7, player.y + 7, 4, 4);
-    ctx.fillRect(player.x - cameraX + player.width - 11, player.y + 7, 4, 4);
+    ctx.drawImage(
+        playerSprite,
+        currentPlayerFrame * PLAYER_FRAME_WIDTH, // Source x
+        0, // Source y (assuming all frames are in the first row)
+        PLAYER_FRAME_WIDTH, // Source width
+        PLAYER_FRAME_HEIGHT, // Source height
+        player.x - cameraX, // Destination x
+        player.y, // Destination y
+        player.width, // Destination width
+        player.height // Destination height
+    );
+
+    // Update the frame for animation (if needed)
+    currentPlayerFrame = (currentPlayerFrame + 1) % PLAYER_FRAMES; // Loop through frames
 }
 
 function drawPlatforms() {
@@ -269,6 +336,14 @@ function drawCoins() {
     });
 }
 
+// Step 3: Update the drawObstacles function to use the selected sprite
+function drawObstacles() {
+    obstacles.forEach(obstacle => {
+        const screenX = obstacle.x - cameraX;
+        ctx.drawImage(obstacle.sprite, screenX, obstacle.y, obstacle.width, obstacle.height); // Use the selected sprite
+    });
+}
+
 function gameLoop() {
     if (!gameRunning) return;
 
@@ -283,11 +358,13 @@ function gameLoop() {
     drawBackground();
     drawPlatforms();
     drawCoins();
+    drawObstacles(); // Draw obstacles
     drawPlayer();
 
     requestAnimationFrame(gameLoop);
 }
 
+// Step 4: Update the startGame function to play background music
 function startGame() {
     gameRunning = true;
     score = 0;
@@ -299,6 +376,8 @@ function startGame() {
     if (isMobile) {
         createTouchControls();
     }
+    backgroundMusic.loop = true; // Loop the music
+    backgroundMusic.play(); // Play the background music
     gameLoop();
 }
 
@@ -408,6 +487,7 @@ window.addEventListener('load', () => {
     initializeLevel();
     drawPlatforms();
     drawCoins();
+    drawObstacles(); // Draw obstacles
     drawPlayer();
 });
 
@@ -422,3 +502,68 @@ function loadHighScore() {
         highScoreElement.textContent = highScore.toString();
     }
 }
+
+// Step 5: Stop the music on game over
+function gameOver() {
+    gameRunning = false; // Stop the game
+    backgroundMusic.pause(); // Stop the background music
+    gameOverScreen.style.display = 'block'; // Show game over screen
+}
+
+// Step 1: Create game over elements
+const gameOverScreen = document.createElement('div');
+gameOverScreen.style.position = 'absolute';
+gameOverScreen.style.top = '50%';
+gameOverScreen.style.left = '50%';
+gameOverScreen.style.transform = 'translate(-50%, -50%)';
+gameOverScreen.style.display = 'none'; // Initially hidden
+gameOverScreen.style.textAlign = 'center';
+gameOverScreen.style.color = 'white';
+gameOverScreen.style.fontSize = '48px';
+gameOverScreen.innerHTML = `
+    <div>Game Over!</div>
+    <button id="restartButton" style="margin-top: 20px; font-size: 24px;">Restart</button>
+`;
+document.body.appendChild(gameOverScreen);
+
+// Step 2: Update the gameOver function
+function gameOver() {
+    gameRunning = false; // Stop the game
+    backgroundMusic.pause(); // Stop the background music
+    gameOverScreen.style.display = 'block'; // Show game over screen
+}
+
+// Step 3: Add event listener to restart button
+document.getElementById('restartButton').addEventListener('click', () => {
+    gameOverScreen.style.display = 'none'; // Hide game over screen
+    startGame(); // Restart the game
+});
+
+// Preload function
+function preloadAssets(callback) {
+    let assetsLoaded = 0;
+    const totalAssets = 2; // Number of assets to load
+
+    playerSprite.onload = () => {
+        console.log('Player sprite loaded successfully');
+        assetsLoaded++;
+        if (assetsLoaded === totalAssets) callback();
+    };
+    obstacleSprites.forEach(sprite => {
+        sprite.onload = () => {
+            console.log(`Obstacle sprite loaded successfully: ${sprite.src}`);
+            assetsLoaded++;
+            if (assetsLoaded === totalAssets) callback();
+        };
+    });
+
+    playerSprite.src = 'assets/images/rogue.png'; // Ensure this path is correct
+    obstacleSprites.forEach(sprite => {
+        sprite.src = sprite.src; // Ensure these paths are correct
+    });
+}
+
+// Call preloadAssets before starting the game
+preloadAssets(() => {
+    startGame(); // Start the game after assets are loaded
+});
